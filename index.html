@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BG Remover HD</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--text:#111827;--muted:#6b7280;--accent:#4f46e5;--border:#e5e7eb}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#181b21;--text:#f3f4f6;--muted:#9ca3af;--border:#2a2f38}}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px}
+main{max-width:900px;margin:auto}
+h1{font-size:1.5rem;margin:8px 0 4px}
+p.sub{color:var(--muted);margin:0 0 16px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+#drop{border:2px dashed var(--border);border-radius:14px;padding:36px 16px;text-align:center;cursor:pointer}
+#drop.over{border-color:var(--accent)}
+button,.btn{background:var(--accent);color:#fff;border:0;border-radius:10px;padding:10px 16px;font-size:1rem;cursor:pointer}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.alt{background:transparent;color:var(--text);border:1px solid var(--border)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:600px){.grid{grid-template-columns:1fr}}
+.box{border-radius:10px;overflow:hidden;border:1px solid var(--border);min-height:120px;
+background-image:linear-gradient(45deg,#ccc 25%,transparent 25%),linear-gradient(-45deg,#ccc 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#ccc 75%),linear-gradient(-45deg,transparent 75%,#ccc 75%);
+background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0}
+.box img{width:100%;display:block}
+.label{font-size:.85rem;color:var(--muted);margin:0 0 6px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}
+.sw{width:32px;height:32px;border-radius:50%;border:2px solid var(--border);cursor:pointer;padding:0}
+.sw.on{outline:2px solid var(--accent)}
+.bar{height:8px;background:var(--border);border-radius:6px;overflow:hidden;margin-top:10px}
+.bar>div{height:100%;width:0;background:var(--accent);transition:width .2s}
+.hide{display:none}
+</style>
+</head>
+<body>
+<main>
+  <h1>🪄 BG Remover HD</h1>
+  <p class="sub">Hapus latar belakang otomatis. Hasil resolusi asli (HD), diproses 100% di browser — foto tidak diunggah ke server.</p>
+
+  <div class="card">
+    <div id="drop">📷 Ketuk atau seret foto ke sini<br><small style="color:var(--muted)">JPG, PNG, WEBP</small></div>
+    <input id="file" type="file" accept="image/*" class="hide">
+    <div id="status" class="sub" style="margin-top:10px"></div>
+    <div class="bar hide" id="bar"><div id="fill"></div></div>
+  </div>
+
+  <div class="card hide" id="result">
+    <div class="grid">
+      <div><p class="label">Asli</p><div class="box"><img id="orig"></div></div>
+      <div><p class="label">Hasil <span id="dim"></span></p><div class="box" id="outbox"><img id="out"></div></div>
+    </div>
+    <div class="row">
+      <span class="label" style="margin:0">Latar:</span>
+      <button class="sw on" data-c="" title="Transparan" style="background:repeating-conic-gradient(#ccc 0 25%,#fff 0 50%) 0 0/12px 12px"></button>
+      <button class="sw" data-c="#ffffff" style="background:#fff"></button>
+      <button class="sw" data-c="#000000" style="background:#000"></button>
+      <button class="sw" data-c="#ef4444" style="background:#ef4444"></button>
+      <button class="sw" data-c="#3b82f6" style="background:#3b82f6"></button>
+      <input type="color" id="custom" value="#22c55e">
+    </div>
+    <div class="row">
+      <button id="dl">⬇️ Download HD (PNG)</button>
+      <button class="alt" id="reset">Foto baru</button>
+    </div>
+  </div>
+</main>
+
+<script type="module">
+import { removeBackground } from "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.5/+esm";
+
+const $ = id => document.getElementById(id);
+let cutBlob = null, cutImg = null, bgColor = "", baseName = "foto";
+
+const drop = $("drop"), file = $("file");
+drop.onclick = () => file.click();
+drop.ondragover = e => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over"); handle(e.dataTransfer.files[0]); };
+file.onchange = () => handle(file.files[0]);
+$("reset").onclick = () => { $("result").classList.add("hide"); $("status").textContent = ""; file.value = ""; };
+
+async function handle(f) {
+  if (!f || !f.type.startsWith("image/")) return;
+  baseName = f.name.replace(/\.[^.]+$/, "");
+  $("orig").src = URL.createObjectURL(f);
+  $("result").classList.add("hide");
+  $("bar").classList.remove("hide");
+  $("status").textContent = "Memuat model AI (pertama kali ±40 MB, setelah itu di-cache)…";
+  try {
+    cutBlob = await removeBackground(f, {
+      model: "isnet",                         // model kualitas tertinggi
+      output: { format: "image/png", quality: 1 },
+      progress: (key, cur, total) => {
+        $("fill").style.width = Math.round(cur / total * 100) + "%";
+        $("status").textContent = key.startsWith("fetch") ? "Mengunduh model…" : "Memproses gambar…";
+      }
+    });
+    cutImg = await createImageBitmap(cutBlob);
+    $("dim").textContent = `(${cutImg.width}×${cutImg.height}px)`;
+    $("status").textContent = "Selesai ✅";
+    $("result").classList.remove("hide");
+    render();
+  } catch (e) {
+    console.error(e);
+    $("status").textContent = "Gagal memproses: " + e.message;
+  }
+  $("bar").classList.add("hide"); $("fill").style.width = "0";
+}
+
+// Komposisi di resolusi ASLI (tanpa diperkecil)
+function compose() {
+  const c = document.createElement("canvas");
+  c.width = cutImg.width; c.height = cutImg.height;
+  const x = c.getContext("2d");
+  if (bgColor) { x.fillStyle = bgColor; x.fillRect(0, 0, c.width, c.height); }
+  x.drawImage(cutImg, 0, 0);
+  return c;
+}
+function render() {
+  compose().toBlob(b => { $("out").src = URL.createObjectURL(b); }, "image/png");
+}
+document.querySelectorAll(".sw").forEach(b => b.onclick = () => {
+  document.querySelectorAll(".sw").forEach(s => s.classList.remove("on"));
+  b.classList.add("on"); bgColor = b.dataset.c; render();
+});
+$("custom").oninput = e => {
+  document.querySelectorAll(".sw").forEach(s => s.classList.remove("on"));
+  bgColor = e.target.value; render();
+};
+$("dl").onclick = () => compose().toBlob(b => {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(b);
+  a.download = `${baseName}-hd.png`;
+  a.click();
+}, "image/png");
+</script>
+</body>
+</html>
