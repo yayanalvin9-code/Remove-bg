@@ -86,16 +86,23 @@ async function handle(f) {
   $("orig").src = URL.createObjectURL(f);
   $("result").classList.add("hide");
   $("bar").classList.remove("hide");
-  $("status").textContent = "Memuat model AI (pertama kali ±40 MB, setelah itu di-cache)…";
+  $("status").textContent = "Memuat model AI (pertama kali puluhan MB, setelah itu di-cache)…";
   try {
-    cutBlob = await removeBackground(f, {
-      model: "isnet",                         // model kualitas tertinggi
+    const cfg = model => ({
+      model, device: "cpu",
       output: { format: "image/png", quality: 1 },
       progress: (key, cur, total) => {
         $("fill").style.width = Math.round(cur / total * 100) + "%";
         $("status").textContent = key.startsWith("fetch") ? "Mengunduh model…" : "Memproses gambar…";
       }
     });
+    try {
+      cutBlob = await removeBackground(f, cfg("isnet_fp16"));
+    } catch (e1) {
+      console.warn("fp16 gagal, coba model ringan", e1);
+      $("status").textContent = "Mencoba model yang lebih ringan…";
+      cutBlob = await removeBackground(f, cfg("isnet_quint8"));
+    }
     cutImg = await createImageBitmap(cutBlob);
     $("dim").textContent = `(${cutImg.width}×${cutImg.height}px)`;
     $("status").textContent = "Selesai ✅";
@@ -103,7 +110,7 @@ async function handle(f) {
     render();
   } catch (e) {
     console.error(e);
-    $("status").textContent = "Gagal memproses: " + e.message;
+    $("status").textContent = "Gagal memproses: " + (e && e.message ? e.message : String(e)) + " (cek koneksi internet, lalu coba lagi)";
   }
   $("bar").classList.add("hide"); $("fill").style.width = "0";
 }
